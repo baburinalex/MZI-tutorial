@@ -30,7 +30,7 @@ pip install -r requirements.txt
 python mzi_tutorial.py
 ```
 
-This regenerates all seven figures into `images/`.
+This regenerates all eight figures into `images/`.
 
 ## Repository layout
 

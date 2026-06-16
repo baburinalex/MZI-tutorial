@@ -75,6 +75,14 @@ def splitter_cross_power_detuned(Lc, dn_eff=0.0, kappa_c=KAPPA_C, lam=LAMBDA0):
     return kappa_c ** 2 / (kappa_c ** 2 + d ** 2) * np.sin(s * Lc) ** 2
 
 
+def splitter_cross_power_symmetric(Lc, dn_eff=0.0, kappa_c=KAPPA_C):
+    """Доля МОЩНОСТИ в cross при ОДИНАКОВОМ изменении n в обоих волноводах.
+    Синфазный сдвиг не создаёт расстройки (delta=0): из уравнений связанных мод
+    он выносится как ОБЩАЯ фаза и сокращается в |T|^2. Поэтому деление не зависит
+    от dn_eff и равно sin^2(kappa_c*Lc) — параметр dn_eff здесь чисто иллюстративный."""
+    return np.sin(kappa_c * Lc) ** 2
+
+
 def delta_phase(lam, dL, phi_tune=0.0):
     """Разность фаз между плечами:
         Delta phi = 2*pi*n_eff*dL/lambda + phi_tune
@@ -533,6 +541,48 @@ def fig7_tunable_splitter(path="images/fig7_tunable_splitter.png"):
     fig.tight_layout(); fig.savefig(path, bbox_inches="tight"); plt.close(fig)
 
 
+def fig8_common_vs_diff(path="images/fig8_common_vs_diff.png"):
+    """Бонус-2 (продолжение): спектр при синфазном vs дифференциальном изменении n."""
+    dL = 100.0
+    Lc = Lc_for_5050()
+    dn = 0.03                       # заметное изменение показателя для наглядности
+    lam = np.linspace(1.550, 1.550 + 2 * FSR(dL), 4000)
+
+    s_ref = splitter_cross_power(Lc)                       # 0.50
+    s_sym = splitter_cross_power_symmetric(Lc, dn)         # 0.50 (не меняется)
+    s_asym = splitter_cross_power_detuned(Lc, dn)          # < 0.50
+
+    Tb_ref, Tc_ref = mzi_transmission(lam, dL, split=s_ref,  split2=0.5)
+    Tb_sym, Tc_sym = mzi_transmission(lam, dL, split=s_sym,  split2=0.5)
+    Tb_asy, Tc_asy = mzi_transmission(lam, dL, split=s_asym, split2=0.5)
+
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+
+    # cross
+    axL.plot(lam * 1000, Tc_ref, lw=2.2, color="gray", label="Δn=0 (опорный)")
+    axL.plot(lam * 1000, Tc_sym, lw=2.0, ls="--", color=COL_OK,
+             label="синфазно, оба волновода (совпадает)")
+    axL.plot(lam * 1000, Tc_asy, lw=1.8, color=COL_CROSS,
+             label="дифференциально, один волновод")
+    axL.set_xlabel("Длина волны, нм"); axL.set_ylabel(r"$T_{cross}$")
+    axL.set_ylim(-0.03, 1.12); axL.legend(fontsize=8, loc="lower center")
+    axL.set_title("cross-выход", fontsize=11)
+
+    # bar
+    axR.plot(lam * 1000, Tb_ref, lw=2.2, color="gray", label="Δn=0 (опорный)")
+    axR.plot(lam * 1000, Tb_sym, lw=2.0, ls="--", color=COL_OK,
+             label="синфазно (совпадает)")
+    axR.plot(lam * 1000, Tb_asy, lw=1.8, color=COL_BAR,
+             label="дифференциально")
+    axR.set_xlabel("Длина волны, нм"); axR.set_ylabel(r"$T_{bar}$")
+    axR.set_ylim(-0.03, 1.12); axR.legend(fontsize=8, loc="lower center")
+    axR.set_title("bar-выход", fontsize=11)
+
+    fig.suptitle(f"Бонус-2*. Изменение n в делителе: синфазное (Δn={dn}) не видно, "
+                 f"дифференциальное поднимает нули", fontsize=12)
+    fig.tight_layout(); fig.savefig(path, bbox_inches="tight"); plt.close(fig)
+
+
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.makedirs("images", exist_ok=True)
@@ -543,7 +593,8 @@ if __name__ == "__main__":
     fig5_designmap()
     fig6_modulator()
     fig7_tunable_splitter()
-    print("OK: 7 рисунков сохранены в images/")
+    fig8_common_vs_diff()
+    print("OK: 8 рисунков сохранены в images/")
     # короткая сводка чисел для проверки
     print(f"FSR(dL=100)        = {FSR(100)*1000:.2f} нм")
     print(f"Lc для 50:50       = {Lc_for_5050():.2f} мкм")
