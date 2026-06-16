@@ -59,6 +59,22 @@ def splitter_cross_power(Lc, kappa_c=KAPPA_C):
     return np.sin(kappa_c * Lc) ** 2
 
 
+def coupler_detuning(dn_eff, lam=LAMBDA0):
+    """Расстройка ответвителя из-за асимметрии показателя преломления:
+    delta = pi * dn_eff / lambda  (половина рассогласования постоянных распространения)."""
+    return np.pi * dn_eff / lam
+
+
+def splitter_cross_power_detuned(Lc, dn_eff=0.0, kappa_c=KAPPA_C, lam=LAMBDA0):
+    """Доля МОЩНОСТИ в cross при расстройке dn_eff (асимметрия одного волновода):
+        P_cross = kappa_c^2/(kappa_c^2+delta^2) * sin^2( sqrt(kappa_c^2+delta^2) * Lc )
+    При dn_eff=0 сводится к sin^2(kappa_c*Lc). С ростом расстройки максимум перекачки
+    падает (волноводы рассогласуются)."""
+    d = coupler_detuning(dn_eff, lam)
+    s = np.sqrt(kappa_c ** 2 + d ** 2)
+    return kappa_c ** 2 / (kappa_c ** 2 + d ** 2) * np.sin(s * Lc) ** 2
+
+
 def delta_phase(lam, dL, phi_tune=0.0):
     """Разность фаз между плечами:
         Delta phi = 2*pi*n_eff*dL/lambda + phi_tune
@@ -70,32 +86,37 @@ def delta_phase(lam, dL, phi_tune=0.0):
 # ----------------------------------------------------------------------
 # Уровень 2: спектр пропускания (два выхода)
 # ----------------------------------------------------------------------
-def mzi_transmission(lam, dL, split=0.5, imbalance_dB=0.0, phi_tune=0.0,
-                     L_short=50.0):
+def mzi_transmission(lam, dL, split=0.5, split2=None, imbalance_dB=0.0,
+                     phi_tune=0.0, L_short=50.0):
     """
-    Пропускание симметричного MZI с двумя одинаковыми ответвителями.
+    Пропускание симметричного MZI с двумя ответвителями.
     Свет подан в верхний входной порт. Возвращает (T_bar, T_cross):
       bar   — выход на той же стороне, что и вход;
       cross — выход на противоположной стороне.
 
-    Матрица одного ответвителя C = [[t, -i*k], [-i*k, t]],  t^2 + k^2 = 1,
-    где k^2 = split (доля мощности в cross). Между ними — два плеча с фазами
-    phi1, phi2 и амплитудами a1, a2. Полная матрица M = C * P * C даёт:
+    split  — доля мощности в cross у ПЕРВОГО ответвителя (k1^2);
+    split2 — то же у ВТОРОГО (если None, берётся равным split — оба одинаковы).
+    Полная матрица M = C2 * P * C1 даёт (a1,a2 — амплитуды плеч, dphi — разность фаз):
 
-        T_cross = k^2 t^2 (a1^2 + a2^2 + 2 a1 a2 cos(dphi))
-        T_bar   = t^4 a1^2 + k^4 a2^2 - 2 t^2 k^2 a1 a2 cos(dphi)
+        T_bar   = (t1 t2 a1)^2 + (k1 k2 a2)^2 - 2 t1 t2 k1 k2 a1 a2 cos(dphi)
+        T_cross = (k2 t1 a1)^2 + (t2 k1 a2)^2 + 2 k1 k2 t1 t2 a1 a2 cos(dphi)
 
-    dphi = phi1 - phi2 — разность фаз между плечами.
+    Идеальное гашение требует РАВНЫХ амплитуд лучей в сумматоре: оно ломается
+    и разбалансом плеч (a1!=a2), и делителем не 50:50 (t1!=k1 или t2!=k2).
     """
-    k2 = split
-    t2 = 1.0 - split
+    if split2 is None:
+        split2 = split
+    k1, t1 = np.sqrt(split), np.sqrt(1.0 - split)
+    k2, t2 = np.sqrt(split2), np.sqrt(1.0 - split2)
     L_long = L_short + dL
     a1 = arm_amplitude(L_short)
     a2 = arm_amplitude(L_long) * 10.0 ** (-imbalance_dB / 20.0)
     dphi = delta_phase(lam, dL, phi_tune)
     cosd = np.cos(dphi)
-    T_cross = k2 * t2 * (a1 ** 2 + a2 ** 2 + 2.0 * a1 * a2 * cosd)
-    T_bar = t2 ** 2 * a1 ** 2 + k2 ** 2 * a2 ** 2 - 2.0 * t2 * k2 * a1 * a2 * cosd
+    T_bar = (t1 * t2 * a1) ** 2 + (k1 * k2 * a2) ** 2 \
+        - 2.0 * t1 * t2 * k1 * k2 * a1 * a2 * cosd
+    T_cross = (k2 * t1 * a1) ** 2 + (t2 * k1 * a2) ** 2 \
+        + 2.0 * k1 * k2 * t1 * t2 * a1 * a2 * cosd
     return T_bar, T_cross
 
 
@@ -462,6 +483,56 @@ def fig6_modulator(path="images/fig6_modulator.png"):
     fig.tight_layout(); fig.savefig(path, bbox_inches="tight"); plt.close(fig)
 
 
+def extinction_ratio_split_dB(split1, split2=0.5):
+    """ER при разбалансе ДЕЛИТЕЛЕЙ (плечи считаем сбалансированными).
+    С идеальным вторым ответвителем (50:50) оба выхода дают
+    ER = 20*log10|(t1+k1)/(t1-k1)|."""
+    k1, t1 = np.sqrt(split1), np.sqrt(1.0 - split1)
+    k2, t2 = np.sqrt(split2), np.sqrt(1.0 - split2)
+    num = abs(k2 * t1 + t2 * k1)
+    den = abs(k2 * t1 - t2 * k1)
+    if den < 1e-12:
+        return np.inf
+    return 20.0 * np.log10(num / den)
+
+
+def fig7_tunable_splitter(path="images/fig7_tunable_splitter.png"):
+    """Бонус-2: что меняет изменение n (расстройка) в делителе."""
+    Lc = Lc_for_5050()
+    dn = np.linspace(0.0, 0.03, 400)
+    split = splitter_cross_power_detuned(Lc, dn)
+
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(11.6, 4.4))
+
+    # (L) коэффициент деления vs расстройка n
+    axL.plot(dn * 1e3, split, lw=2, color=COL_BAR)
+    axL.axhline(0.5, ls="--", color="gray")
+    axL.plot(0, 0.5, "o", color=COL_OK, ms=8)
+    axL.annotate("Δn=0 → 50:50\n(максимум перекачки)", (0, 0.5), (0.006 * 1e3, 0.30),
+                 fontsize=10, color=COL_OK,
+                 arrowprops=dict(arrowstyle="->", lw=1))
+    axL.set_xlabel(r"расстройка $\Delta n_{eff}$ одного волновода, $\times10^{-3}$")
+    axL.set_ylabel("доля мощности в cross")
+    axL.set_ylim(0, 0.6)
+    axL.set_title("Делитель «уезжает» от 50:50", fontsize=11)
+
+    # (R) к чему это приводит: ER MZI vs расстройка делителя
+    ER = np.array([min(extinction_ratio_split_dB(s), 60.0) for s in split])
+    axR.plot(dn * 1e3, ER, lw=2, color=COL_CROSS)
+    axR.axvline(0, ls="--", color=COL_OK)
+    axR.annotate("Δn=0:\nидеальное гашение", (0, 55), (0.008 * 1e3, 48),
+                 fontsize=10, color=COL_OK,
+                 arrowprops=dict(arrowstyle="->", lw=1))
+    axR.set_xlabel(r"расстройка $\Delta n_{eff}$ одного волновода, $\times10^{-3}$")
+    axR.set_ylabel("ER интерферометра, дБ")
+    axR.set_ylim(0, 62)
+    axR.set_title("ER падает: лучи приходят неравными", fontsize=11)
+
+    fig.suptitle("Бонус-2. Изменение n в делителе: перестраиваемый делитель и его цена",
+                 fontsize=13)
+    fig.tight_layout(); fig.savefig(path, bbox_inches="tight"); plt.close(fig)
+
+
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.makedirs("images", exist_ok=True)
@@ -471,10 +542,14 @@ if __name__ == "__main__":
     fig4_geometry()
     fig5_designmap()
     fig6_modulator()
-    print("OK: 6 рисунков сохранены в images/")
+    fig7_tunable_splitter()
+    print("OK: 7 рисунков сохранены в images/")
     # короткая сводка чисел для проверки
     print(f"FSR(dL=100)        = {FSR(100)*1000:.2f} нм")
     print(f"Lc для 50:50       = {Lc_for_5050():.2f} мкм")
     print(f"ER @разбаланс 0.8дБ = {extinction_ratio_cross_dB(100, 0.8):.1f} дБ")
     print(f"L нагревателя на pi = {heater_length_for_pi(30.0):.1f} мкм @dT=30 K")
+    split_det = splitter_cross_power_detuned(Lc_for_5050(), dn_eff=0.01)
+    print(f"деление при Δn=0.01 = {split_det:.3f} (вместо 0.5)")
+    print(f"ER при этом         = {extinction_ratio_split_dB(split_det):.1f} дБ")
     print("inverse:", design_for_FSR_ER(0.006, 25.0))

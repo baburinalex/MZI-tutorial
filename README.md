@@ -16,6 +16,8 @@ The guide is built in five levels, each going one step further — and each with
 4. **Geometry → physics** — how arm imbalance `ΔL` maps to FSR, how coupler length `Lc` maps to the 50:50 split, and how a heater maps to phase via the thermo-optic effect.
 5. **Inverse design** — given a target FSR and ER, solve for `ΔL`, the splitter length, and the arm-balance budget; a design map in the (ΔL, imbalance) plane.
 
+Plus two bonus sections: the **balanced MZI as a modulator** (transfer function, quadrature bias, Vπ, and why its sinusoidal fringes differ from the ring's sharp resonance), and **changing the index inside the splitter** (detuned coupler → tunable split ratio → the cost in extinction, the basis of programmable photonics).
+
 The full tutorial text is in [`mzi_interferometer_tutorial.md`](mzi_interferometer_tutorial.md) (in Russian).
 
 ## Quick start
@@ -28,7 +30,7 @@ pip install -r requirements.txt
 python mzi_tutorial.py
 ```
 
-This regenerates all six figures into `images/`.
+This regenerates all seven figures into `images/`.
 
 ## Repository layout
 
